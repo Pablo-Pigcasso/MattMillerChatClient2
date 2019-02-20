@@ -37,5 +37,25 @@ int main(){
         return 1;
     }
     puts("Socket Created\n");
+    
+    //Connecting to the server
+    int sockfd = socket(AF_INET, SOCK_STREAM, 0);
+    server.sin_family = AF_INET;
+    server.sin_port = htons( 49153 );
+    inet_pton(AF_INET, "10.115.20.250", &server.sin_addr);
+    status=connect(sockfd, (const struct sockaddr *) &server, sizeof(server));
+    if(status < 0){
+        perror("Connection to server failed...\n");
+        return 1;
+    }
+    puts("Connected to server\n");
+    sleep(1); //TODO: Is this needed?
+    
+    //Ask user for username and then pass it to the server
+    puts("Enter Username: ");//TODO reword this?
+    fgets(name, sizeof(name), stdin); //fgets is more secure than gets
+    send(sockfd, name, strlen(name), 0);
+    sleep(3);
+    
+    //TODO: New code for project II
 }
-
