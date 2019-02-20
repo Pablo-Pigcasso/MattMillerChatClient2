@@ -13,6 +13,8 @@
  */
 
 #include <stdio.h>
+#include <time.h> //from class notes
+#include <sys/select.h> //from class notes
 #include <arpa/inet.h>
 #include <netinet/in.h>
 #include <sys/types.h>
@@ -20,15 +22,28 @@
 #include <unistd.h> //write
 #include <errno.h> //errors
 #include <string.h> //strings and info
-#include <sys/select.h> //found via in class notes
+
+//NEW CODE
+#define IP "10.115.20.250"
+#define PORT 49153
+#define BUFSIZE 1024
 
 // lets start with something we know... main
-int main(){
+int main(int argc, char * argv[]){
     
     //Intial info for connecting with the server
     struct sockaddr_in server; //server is variable name of Rodkey's server
-    int status, descriptor;
-    char name[20], message[80], serverReply[500]; //setting size of name, message, and reply
+    struct timeval timev; //timeval is going help time for the while loop
+    int status, descriptor, fd, len;
+    char *name, *buffer, *message, *origbuffer; //setting size of name, message, and reply
+    
+    //TODO: Ask Rodkey if I can connect this way
+    fd = connect2v4stream(IP, PORT);
+    
+    //Timeout timer, set to half a second
+    timev.tv_sec = 0;
+    timev.tv_usec = 1000 * 500;
+    setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &timev, sizeof(timev));
     
     //Opening socket
     descriptor = socket(PF_INET,SOCK_STREAM, 0); //opens the socket
