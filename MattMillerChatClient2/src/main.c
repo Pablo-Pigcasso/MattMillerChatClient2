@@ -72,6 +72,31 @@ int sendout(int fd, char *msg){
     return strlen(msg);
 }
 
+// new receive and print, it grabs all strings from server until there are no more.
+void recvandprint (int fd, char *buff){
+    
+    int ret;
+    
+    for(;;){
+        buff = malloc(BUFSIZE+1);
+        ret = recv(fd, buff, BUFSIZE, 0);
+        if(ret == -1){
+            if(errno == EAGAIN){
+                break;
+            } else {
+                printf("ERROR: error receiving from server. errno = %d\n", errno);
+                exit(errno);
+            }
+        } else if (ret == 0) {
+            exit(0);
+        } else {
+            buff[ret] = 0;
+            printf("%s", buff);
+        }
+        free(buff);
+    }
+}
+
 // lets start with something we know... main
 int main(int argc, char * argv[]){
     
@@ -96,7 +121,7 @@ int main(int argc, char * argv[]){
     
     //TODO: Dissect this code.
     while(!is_done){
-        recvandprint(fd, buffer); //this exists????
+        recvandprint(fd, buffer);
         len = BUFSIZE;
         buffer = malloc(len+1);
         origbuffer = buffer;
@@ -106,6 +131,4 @@ int main(int argc, char * argv[]){
         is_done = (strcmp (buffer, "quit\n") == 0);
         free(origbuffer);
     }
-    
-    
 }
