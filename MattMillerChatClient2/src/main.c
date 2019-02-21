@@ -24,16 +24,22 @@
 #include <string.h> //strings and info
 
 //NEW CODE
-#define IP "10.115.20.250"
+#define SERVER "10.115.20.250"
 #define PORT 49153
 #define BUFSIZE 1024
+#define MESSAGE_S 80
 
 //Intial declarations
-struct sockaddr_in server; //server is variable name of Rodkey's server
+//struct sockaddr_in server; //server is variable name of Rodkey's server
 struct timeval timev; //timeval is going help time for the while loop
 int descriptor, fd, len;
 int is_done = 0;
-char *name, message[500], *buffer, *origbuffer; //setting size of name, message, and reply
+char *name, *buffer, *origbuffer; //setting size of name, message, and reply
+//fds from github: https://github.com/dtolj/simple-chat-client-server/blob/master/chat.c
+fd_set readfds, testfds, clientfds;
+int sockfd, result;
+char msg[MESSAGE_S + 1];
+char kb_msg[MESSAGE_S + 10];
 
 
 //new function for connecting to the server
@@ -45,7 +51,7 @@ int connect2v4stream(char * srv, int port){
         printf("ERROR: Socket failed to be created correctly. errno = %d\n", errno);
         exit(errno);
     }
-    if ((ret = inet_pton(AF_INET, IP, &sin.sin_addr)) <= 0){
+    if ((ret = inet_pton(AF_INET, SERVER, &sin.sin_addr)) <= 0){
         printf("ERROR: Trouble converting using inet_pton. return value = %d, errno = %d\n", ret, errno);
         exit(errno);
     }
@@ -101,7 +107,7 @@ void recvandprint (int fd, char *buff){
 int main(int argc, char * argv[]){
     
     //NEW CONNECT VIA IN CLASS NOTES
-    fd = connect2v4stream( IP, PORT);
+    fd = connect2v4stream( SERVER, PORT);
     
     //Timeout timer, set to half a second
     timev.tv_sec = 0;
@@ -110,7 +116,7 @@ int main(int argc, char * argv[]){
     
     
     if(argc < 2){
-        printf("Username\n");
+        printf("Usage: chat-client Username\n");
         exit(1);
     }
     name = argv[1];
@@ -119,16 +125,57 @@ int main(int argc, char * argv[]){
     name[len+1] = '\0'; //terminates the string
     sendout(fd, name);
     
+    //TODO: cite github
+    FD_ZERO(&clientfds);
+    FD_SET(sockfd,&clientfds);
+    FD_SET(0,&clientfds);//stdin
+    
     //TODO: Dissect this code.
-    while(!is_done){
-        recvandprint(fd, buffer);
-        len = BUFSIZE;
-        buffer = malloc(len+1);
-        origbuffer = buffer;
-        if(getline(&buffer,(size_t *) &len,stdin) > 1){
-            sendout(fd, buffer);
+    while(1) {
+        testfds = clientfds;
+        select(FD_SETSIZE, &testfds, NULL, NULL, NULL);
+        
+        for(fd=0;fd<FD_SETSIZE;fd++){
+            if(FD_ISSET(fd,&testfds)){
+                if(fd==sockfd){
+                    result = read(sockfd, msg, MESSAGE_S);
+                    msg[result] = '\0';
+                    printf("%s", msg + 1);
+                    
+                    if(msg[0] == 'X'){
+                        close(sockfd);
+                        exit(0);
+                    }
+                    
+                }
+                else if(fd == 0){
+                    
+                    fgets(kb_msg, MESSAGE_S+1, stdin);
+                    if (strcmp(kb_msg, "quit\n") == 0){
+                        sprintf(msg, "Disconnecting, shutting down.\n");
+                        write(sockfd, msg, strlen(msg));
+                        close(sockfd);
+                        exit(0);
+                    }
+                    else {
+                        sprintf(msg, "M%s", kb_msg);
+                        write(sockfd, msg, strlen(msg));
+                    }
+                }
+            }
         }
-        is_done = (strcmp (buffer, "quit\n") == 0);
-        free(origbuffer);
     }
+    /*    while(!is_done){
+     recvandprint(fd, buffer);
+     len = BUFSIZE;
+     buffer = malloc(len+1);
+     origbuffer = buffer;
+     if(getline(&buffer,(size_t *) &len,stdin) > 1){
+     sendout(fd, buffer);
+     }
+     is_done = (strcmp (buffer, "quit\n") == 0);
+     free(origbuffer);
+     }
+     
+     */
 }
