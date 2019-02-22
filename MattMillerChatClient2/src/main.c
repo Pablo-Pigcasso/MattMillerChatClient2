@@ -20,14 +20,24 @@
 #include <arpa/inet.h>
 #include <errno.h>
 #include <time.h>
+//For select
+#include <sys/select.h>
+#include <sys/time.h> //FD_SET, FD_ISSET, FD_ZERO
 
-//NEW CODE
+//defines for Server IP, Server PORT,
 #define S_IP "10.115.20.250"
 #define S_PORT 49153
 #define BUFSIZE 1024
 
+int fd, len, ret, sockd, sret;
+char *name, *buffer, *origbuffer;
+struct timeval timev;
+
+//Select functions
+fd_set readfds;
+
+
 int connect2v4stream(char * srv, int port){
-    int ret,sockd;
     struct sockaddr_in sin;
     
     if((sockd = socket(AF_INET, SOCK_STREAM, 0)) == -1){
@@ -36,7 +46,7 @@ int connect2v4stream(char * srv, int port){
     }
     
     if((ret = inet_pton(AF_INET, S_IP, &sin.sin_addr)) <= 0){
-        printf("ERROR: could not correctly convert using inet_pton. \ return value = %d, errno = %d\n", ret, errno);
+        printf("ERROR: could not correctly convert using inet_pton. \n Return value = %d, errno = %d\n", ret, errno);
         exit(errno);
     }
     
@@ -63,29 +73,34 @@ int sendout(int fd, char *msg){
 void recvandprint(int fd, char *buff){
     int ret;
     for(;;){
-        buff = malloc(BUFSIZE+1);
-        ret = recv(fd,buff,BUFSIZE,0);
-        if(ret==-1){
-            if(errno == EAGAIN){
-                break;
-            } else {
-                printf("ERROR: error receiving. errno = %d\n", errno);
-                exit(errno);
-            }
-        } else if (ret == 0){
-            exit(0);
+        sret = select(100, &readfds, NULL, NULL, &timev);
+        
+        if(sret == 0){
+            printf("sret = %d\n",sret);
+            printf("    timeout\n");
         } else {
-            buff[ret] = 0;
-            printf("%s",buff);
+            printf("sret = %d\n",sret);
+            buff = malloc(BUFSIZE+1);
+            ret = recv(fd,buff,BUFSIZE,0);
+            if(ret==-1){
+                if(errno == EAGAIN){
+                    break;
+                } else {
+                    printf("ERROR: error receiving. errno = %d\n", errno);
+                    exit(errno);
+                }
+            } else if (ret == 0){
+                exit(0);
+            } else {
+                buff[ret] = 0;
+                printf("%s",buff);
+            }
+            free(buff);
         }
-        free(buff);
     }
 }
 
 int main(int argc, char * argv[]){
-    int fd, len;
-    char *name, *buffer, *origbuffer;
-    struct timeval timev;
     
     fd = connect2v4stream(S_IP, S_PORT);
     
@@ -94,7 +109,7 @@ int main(int argc, char * argv[]){
     setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &timev, sizeof(timev));
     
     if(argc < 2){
-        printf("Usage: Networks chat-client username\n");
+        printf("Usage: Networks chat-client <username>\n");
         exit(1);
     }
     name = argv[1];
@@ -106,6 +121,10 @@ int main(int argc, char * argv[]){
     
     int is_done = 0;
     while(!is_done){
+        
+        FD_ZERO(&readfds);
+        FD_SET(fd, &readfds);
+        
         recvandprint(fd,buffer);
         
         len = BUFSIZE;
@@ -118,3 +137,7 @@ int main(int argc, char * argv[]){
         free(origbuffer);
     }
 }
+
+
+
+
