@@ -18,6 +18,16 @@
  *
  */
 
+/*
+ *To Run the chat client:
+ *
+ *Open terminal, navigate to run project folder and
+ *type ./main <username>
+ *
+ *The program will grab replies from the server automatically
+ *to send text simply type into the lower box and hit enter.
+ */
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -35,7 +45,7 @@
 #define S_PORT 49153
 #define BUFSIZE 1024
 
-int len, ret, sockd, sret;
+int ret, sockd, sret, len, fd;
 char *name, *buffer, *origbuffer;
 struct timeval timev;
 
@@ -46,6 +56,7 @@ fd_set readfds;
 
 //Replaces my old socket connect as well as server connect
 int connect2v4stream(char * srv, int port){
+    int ret, sockd;
     struct sockaddr_in sin;
     
     //creates socket for connection to the server
@@ -73,69 +84,68 @@ int connect2v4stream(char * srv, int port){
 
 //Replaces my old fgets, honestly this is a lot cleaner.
 int sendout(int fd, char *msg){
+    
+    int ret;
     //TODO: check that changing ret to rets did not break anything
-    int rets;
-    rets = send(fd, msg, strlen(msg), 0);
-    if(rets == -1){
+    ret = send(fd, msg, strlen(msg), 0);
+    if(ret == -1){
         printf("ERROR: trouble sending. errno = %d\n", errno);
         exit(errno);
     }
-    //Do I need to return message after sending it? Shouldn't my read do this already?
-    //TODO: check to see if I even need this
     return strlen(msg);
 }
 
 //replaces old read functionality
 void recvandprint(int fd, char *buff){
     //local declaration of ret and sret, can this be moved to the top?
-    int ret;
-    int sret;
+    
     for(;;){
         
+        //credit to in-class video: https://www.youtube.com/watch?v=qyFwGyTYe-M
         //sets readfds back to zero upon each loop, clearning it
         FD_ZERO(&readfds);
         //sets readfds to fd, this is done bit by bit
         FD_SET(fd, &readfds);
         
-        //select implemented
-        //credit to in-class video: https://www.youtube.com/watch?v=qyFwGyTYe-M
-        sret = select(8, &readfds, NULL, NULL, &timev);
-        
-        if(sret == 0){
-            printf("sret = %d\n",sret);
-            printf("    timeout\n");
-        } else {
-            printf("sret = %d\n",sret);
-            buff = malloc(BUFSIZE+1);
-            ret = recv(fd,buff,BUFSIZE,0);
-            if(ret==-1){
-                if(errno == EAGAIN){
-                    break;
-                } else {
-                    printf("ERROR: error receiving. errno = %d\n", errno);
-                    exit(errno);
-                }
-            } else if (ret == 0){
-                exit(0);
+        //memory allocation for buffer
+        buff = malloc(BUFSIZE+1);
+        ret = recv(fd,buff,BUFSIZE,0);
+        if(ret==-1){
+            if(errno == EAGAIN){ //calls the same routine at a later time
+                break;
             } else {
-                buff[ret] = 0;
-                printf("%s",buff);
+                //error catching for recieving
+                printf("ERROR: error receiving. errno = %d\n", errno);
+                exit(errno);
             }
-            free(buff);
+        } else if (ret == 0){
+            exit(0);
+        } else {
+            buff[ret] = 0;
+            printf("%s",buff);
         }
+        //freeing the buffer
+        free(buff);
+        
     }
 }
 
 int main(int argc, char * argv[]){
     
+    //call new connect function
     fd = connect2v4stream(S_IP, S_PORT);
     
-    timev.tv_sec = 5;
+    //sets time for 3 seconds, this should maybe be longer.
+    //after testing, somewhere between 3-10 seconds is best.
+    timev.tv_sec = 3;
     timev.tv_usec = 0;
+    //from <sys/socket.h> setsockopt sets the socket options
     setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &timev, sizeof(timev));
     
+    //argc or argcount
     if(argc < 2){
-        printf("Usage: Networks chat-client <username>\n");
+        //to run the program use ./main <username>
+        printf("ERROR: Correct Usage: ./main <username>\n");
         exit(1);
     }
     name = argv[1];
@@ -160,25 +170,4 @@ int main(int argc, char * argv[]){
         free(origbuffer);
     }
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
