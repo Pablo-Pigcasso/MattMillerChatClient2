@@ -86,7 +86,8 @@ int connect2v4stream(char * srv, int port){
 int sendout(int fd, char *msg){
     
     int ret;
-    //TODO: check that changing ret to rets did not break anything
+    //for some reason changing the ret variable here to any other name and redeclaring it is what breaks
+    //the entire thing. It works with or without select() actually be implemented.
     ret = send(fd, msg, strlen(msg), 0);
     if(ret == -1){
         printf("ERROR: trouble sending. errno = %d\n", errno);
@@ -137,7 +138,7 @@ int main(int argc, char * argv[]){
     
     //sets time for 3 seconds, this should maybe be longer.
     //after testing, somewhere between 3-10 seconds is best.
-    timev.tv_sec = 3;
+    timev.tv_sec = 5;
     timev.tv_usec = 0;
     //from <sys/socket.h> setsockopt sets the socket options
     setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &timev, sizeof(timev));
@@ -170,4 +171,5 @@ int main(int argc, char * argv[]){
         free(origbuffer);
     }
 }
+
 
