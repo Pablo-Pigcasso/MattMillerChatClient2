@@ -5,30 +5,30 @@
  *  Created on: February 19, 2019
  *      Author: Matthew Miller
  *
+ * I started on the 19th because my birthday was the 18th and I was home in colorado for it, telnet was not working.
+ *
+ *
  * This new file was created when I gave up on trying to just update my old main.c file to cover the new project.
  * Using the notes from class as well as what I learned from the previous project, here is my attempt at project
  * number 2.
  *
  *
  * Acknowledgments:
- * - Rodkey for the new base code via in class notes: https://westmont.instructure.com/courses/3049/files/folder/Presentations/2019?preview=136453
  * - In-class video for help on select: https://www.youtube.com/watch?v=qyFwGyTYe-M
  * - Rodkey for new send and recv code: https://westmont.instructure.com/courses/3049/files/folder/Presentations/2019?preview=136453
+ * - I'm sure there is some stack overflow I could cite, but none of them actually helped. Just gave me a better
+ * understanding of what I was looking at overall. Not one in particular saved the day though.
  * - James Bek helped me a lot with helping me figure out how the heck to use ncurses to make windows
  *      - Specifically, James showed me the wonders of scollok.
  * - Dempsey Salazar showed me how to save my cursor position and recall it.
- * - Jared Wilkens helped me remember that sleep() is the answer to everything. And it honestly is the only reason my program works.
- * - http://www.tutorialspoint.com/unix_system_calls/_newselect.htm talks about checking for stdin to change. This was helpful in
- *   finding the...
- * - Second to last result on google page for select read c: http://csapp.cs.cmu.edu/2e/ics2/code/conc/select.c
- *      - This was the straw that broke the camels back when it came to select. This page showed that it is possible to
- *      put two things into read rather than trying to use read and write. Because of this by checking the value in &readfds
- *      in my code, I am able to see if there is anything to read or not.
- * - Tanner Leslie & Jared Wilkens pushed me in the right direction of using ISSET to check the readfds value.
+ * - Jared Wilkens helped me figure out threads is easier.
+ * - http://man7.org/linux/man-pages/man3/pthread_join.3.html the manual page that made this entire project possible
  */
 
 /*
  *To Run the chat client:
+ *
+ *to compile use gcc -o main main.c -lncurses
  *
  *Open terminal, navigate to run project folder and
  *type ./main <username>
@@ -45,32 +45,31 @@
 #include <arpa/inet.h>
 #include <errno.h>
 #include <time.h>
-//For select
-#include <sys/select.h>
-#include <sys/time.h> //FD_SET, FD_ISSET, FD_ZERO
 //For windows
+#include <pthread.h> //to compile add -lncurses after the normal gcc stuff
 #include <ncurses.h>
 
 //defines for Server IP, Server PORT,
 #define S_IP "10.115.20.250"
-//Port numbers we can use are 49153, 49154, 49155
-#define S_PORT 49155
+#define S_PORT 49153
 #define BUFSIZE 1024
 
-int ret, sockd, sret, len, fd, cury, curx;
+//Global declarations
+int ret, sockd, len, fd, cury, curx;
 char *name, *buffer, *origbuffer;
 struct timeval timev;
+int is_done;
+pthread_t thread1, thread2;
 
+char left[] = " > > disconnected from the server\n";
+
+int fd = 0;
+
+//Initial declarations on the global scale
 WINDOW * win; //first window (not box)
 WINDOW * win1; //second window (not box)
 WINDOW * win2; //big box
 WINDOW * win3; //small lower box
-
-int fd = 0;
-
-//Select functions
-fd_set readfds;
-fd_set writefds;
 
 //buildwindows creates the windows for entering commands, displaying text from server, and for style
 void buildwindows(){
@@ -115,9 +114,7 @@ void buildwindows(){
     //the first box is the lower window, the second box is the main outside window
     box(win3, 0, 0);
     box(win2, 0, 0);
-    /*
-     mvwprintw(win, 0, 0, "this is my box1"); //test print
-     */
+    
     //refreshes for each of the windows
     wrefresh(win2);
     wrefresh(win);
@@ -158,8 +155,6 @@ int connect2v4stream(char * srv, int port){
 int sendout(int fd, char *msg){
     
     int ret;
-    //for some reason changing the ret variable here to any other name and redeclaring it is what breaks
-    //the entire thing. It works with or without select() actually be implemented.
     ret = send(fd, msg, strlen(msg), 0);
     if(ret == -1){
         printf("ERROR: trouble sending. errno = %d\n", errno);
@@ -167,21 +162,15 @@ int sendout(int fd, char *msg){
     }
     wrefresh(win1);
     cbreak();
-    //Don't ask me how. Don't ask me why. But it only works if I refresh as often as I do and I use these specific sleeps
-    sleep(1);
     wclear(win1);
     return strlen(msg);
 }
 
 //replaces old read functionality
 void recvandprint(int fd, char *buff){
-    //local declaration of ret and sret, can this be moved to the top?
     
     for(;;){
         
-        //Don't ask me how. Don't ask me why. But it only works if I refresh as often as I do and I use these specific sleeps
-        sleep(1);
-        cbreak();
         wrefresh(win);
         wrefresh(win1);
         
@@ -208,20 +197,47 @@ void recvandprint(int fd, char *buff){
         free(buff);
         wrefresh(win);
         cbreak();
-        
     }
 }
 
+//recving thread, it basically runs it as its own program, breaks when quit is called
+void *recvthread (void *recvthing)
+{
+    while(!is_done)
+    {
+        char *buffer;
+        recvandprint(fd, buffer);
+    }
+}
+
+//sending thread, runs on its own until quit is called
+void *sendthread (void *sendthing)
+{
+    while(!is_done)
+    {
+        int len = BUFSIZE;
+        char *buffer = malloc(len+1);
+        char *origbuffer = buffer;
+        wgetstr(win1, buffer);
+        strcat(buffer, "\n");
+        sendout(fd, buffer);
+        wrefresh(win1);
+        //if quit is typed, exit the program gracefully
+        is_done = (strcmp (buffer, "quit\n") == 0);
+        free(origbuffer);
+    }
+    sendout(fd, left);
+    pthread_cancel(thread2);
+    pthread_cancel(thread1);
+    endwin();
+}
+
+//Main call
 int main(int argc, char * argv[]){
-    
     
     //call new connect function
     fd = connect2v4stream(S_IP, S_PORT);
     
-    //sets time for 3 seconds, this should maybe be longer.
-    //after testing, somewhere between 3-10 seconds is best.
-    timev.tv_sec = 2;
-    timev.tv_usec = 0;
     //from <sys/socket.h> setsockopt sets the socket options
     setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &timev, sizeof(timev));
     
@@ -231,55 +247,34 @@ int main(int argc, char * argv[]){
         printf("ERROR: Correct Usage: ./main <username>\n");
         exit(1);
     }
+    
+    //sends name out to server
     name = argv[1];
     len = strlen(name);
     name[len] = '\n';
     name[len+1] = '\0';
     sendout(fd, name);
     
+    //when called it builds the two boxes and the windows inside them.
     buildwindows();
     
+    //makes sure is_done is 0 before starting the loop, probably redudant
     int is_done = 0;
-    while(!is_done){
-        
-        wrefresh(win);
-        wrefresh(win1);
-        cbreak();
-        
-        //credit to in-class video: https://www.youtube.com/watch?v=qyFwGyTYe-M
-        //sets readfds back to zero upon each loop, clearning it
-        FD_ZERO(&readfds);
-        //sets readfds to fd, this is done bit by bit
-        //http://csapp.cs.cmu.edu/2e/ics2/code/conc/select.c
-        //via the above link I can set both the stdin (or 0) to readfds as
-        //well as listening (via fd) on readfds. Instead of trying to have one on
-        //the read buff and one on the write as I would expect. They both go on
-        //the same one. This was super frustrating. Why can't I just use writefds???
-        //http://www.tutorialspoint.com/unix_system_calls/_newselect.htm talks about how stdin is 0 and checking for change. This was also helpful.
-        FD_SET(fd, &readfds);
-        FD_SET(0, &readfds);
-        
-        //select only needs to use &readfds, the last value should be NULL so that it continually loops
-        select(fd + 1, &readfds, NULL, NULL, NULL);
-        
-        //FD_ISSET checks the value of readfds
-        if(FD_ISSET(fd, &readfds)){
-            //
-            recvandprint(fd,buffer);
-        } else if(FD_ISSET(0, &readfds)){
-            len = BUFSIZE;
-            buffer = malloc(len+1);
-            origbuffer = buffer;
-            wgetstr(win1, buffer);
-            strcat(buffer, "\n");
-            //if(getline(&buffer,(size_t *) &len,stdin) > 1){
-            sendout(fd, buffer);
-            wrefresh(win1);
-            //}
-            is_done = (strcmp (buffer, "quit\n") == 0);
-            free(origbuffer);
-        }
-    }
+    
+    //refreshes the windows before calling the threads
+    wrefresh(win);
+    wrefresh(win1);
+    cbreak();
+    
+    //calling the threads, the threads have loops in them so they continually run
+    pthread_create(&thread1, NULL, recvthread, NULL);
+    pthread_create(&thread2, NULL, sendthread, NULL);
+    pthread_join(thread1, NULL);
+    pthread_join(thread2, NULL);
+    
     //How windows are ended. I should get here after typing quit.
     endwin();
+    return 0;
 }
+
+
