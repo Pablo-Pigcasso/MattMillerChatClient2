@@ -5,6 +5,9 @@
  *  Created on: February 19, 2019
  *      Author: Matthew Miller
  *
+ * I started on the 19th because my birthday was the 18th and I was home in colorado for it, telnet was not working.
+ *
+ *
  * This new file was created when I gave up on trying to just update my old main.c file to cover the new project.
  * Using the notes from class as well as what I learned from the previous project, here is my attempt at project
  * number 2.
@@ -23,6 +26,8 @@
 
 /*
  *To Run the chat client:
+ *
+ *to compile use gcc -o main main.c -lncurses
  *
  *Open terminal, navigate to run project folder and
  *type ./main <username>
@@ -43,17 +48,19 @@
 #include <sys/select.h>
 #include <sys/time.h> //FD_SET, FD_ISSET, FD_ZERO
 //For windows
-#include <ncurses.h>
+#include <ncurses.h> //to compile add -lncurses after the normal gcc stuff
 
 //defines for Server IP, Server PORT,
 #define S_IP "10.115.20.250"
 #define S_PORT 49155
 #define BUFSIZE 1024
 
+//Global declarations
 int ret, sockd, sret, len, fd, cury, curx;
 char *name, *buffer, *origbuffer;
 struct timeval timev;
 
+//Initial declarations on the global scale
 WINDOW * win; //first window (not box)
 WINDOW * win1; //second window (not box)
 WINDOW * win2; //big box
@@ -172,6 +179,7 @@ void recvandprint(int fd, char *buff){
     for(;;){
         
         //Don't ask me how. Don't ask me why. But it only works if I refresh as often as I do and I use these specific sleeps
+        sleep(1);
         cbreak();
         wrefresh(win);
         wrefresh(win1);
@@ -206,12 +214,11 @@ void recvandprint(int fd, char *buff){
         free(buff);
         wrefresh(win);
         cbreak();
-        
     }
 }
 
+
 int main(int argc, char * argv[]){
-    
     
     //call new connect function
     fd = connect2v4stream(S_IP, S_PORT);
@@ -229,20 +236,26 @@ int main(int argc, char * argv[]){
         printf("ERROR: Correct Usage: ./main <username>\n");
         exit(1);
     }
+    
     name = argv[1];
     len = strlen(name);
     name[len] = '\n';
     name[len+1] = '\0';
     sendout(fd, name);
     
+    //when called it builds the two boxes and the windows inside them.
     buildwindows();
     
+    //makes sure is_done is 0 before starting the loop, probably redudant
     int is_done = 0;
     while(!is_done){
         
+        //refreshes the windows at the beginning of each loop
         wrefresh(win);
         wrefresh(win1);
         cbreak();
+        
+        //call recv and print
         recvandprint(fd,buffer);
         
         len = BUFSIZE;
@@ -250,10 +263,11 @@ int main(int argc, char * argv[]){
         origbuffer = buffer;
         wgetstr(win1, buffer);
         strcat(buffer, "\n");
-        //if(getline(&buffer,(size_t *) &len,stdin) > 1){
+        //if(getline(&buffer,(size_t *) &len,stdin) > 1){ //error checking
         sendout(fd, buffer);
         wrefresh(win1);
         //}
+        //if quit is typed, exit the program gracefully
         is_done = (strcmp (buffer, "quit\n") == 0);
         free(origbuffer);
     }
